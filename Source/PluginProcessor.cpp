@@ -167,6 +167,8 @@ bool SimpleEQAudioProcessor::hasEditor() const
 juce::AudioProcessorEditor* SimpleEQAudioProcessor::createEditor()
 {
     return new SimpleEQAudioProcessorEditor (*this);
+    // Can be used to build generic GUI with the declared Processor Parameters (if any)
+//    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -181,6 +183,49 @@ void SimpleEQAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::createParamLayout()
+{
+    // 3 Equalizer Bands (Low Cut, Hi Cut and Parametric/Peak)
+    juce::AudioProcessorValueTreeState::ParameterLayout paramLayout;
+    // Cut Bands: Controllable Freq/Slope
+    // Skew factor of 1.0 (Linear change of the values)
+    // Low Cut Filter -> 20Hz to 20kHz Freq Range. Default value of 20Hz
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("LowCut Freq", 1), "LowCut Freq",
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                20.f));
+    // Hi Cut Filter -> 20Hz to 20kHz Freq Range. Default value of 20kHz
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("HiCut Freq", 1), "HiCut Freq",
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                20000.f));
+    // Create Choice Object for both the Low and Hi Cut Filter Parameters.
+    // Slope will have values which are factor of 12 (12 dBs/Oct, 24 dBs/Oct, etc.)
+    juce::StringArray stringArray;
+    int factor = 12;
+    for (int i = 0; i < 4; i++) {
+        juce::String str;
+        str += (factor + i*factor);
+        str += " dBs/Oct";
+        stringArray.add(str);
+    }
+    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID("LowCut Slope", 1), "LowCut Slope", stringArray, 0));
+    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID("HiCut Slope", 1), "HiCut Slope", stringArray, 0));
+    
+    // Parametric Band: Controllable Freq, Gain, Quality
+    // Peak Band -> 20Hz to 20kHz Freq Range. Default value of 20Hz
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Freq", 1), "Peak Freq",
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+                                                                750.f));
+    // Peak Band Gain
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Gain", 1), "Peak Gain",
+                                                                juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+                                                                0.0f));
+    // Peak Band Quality factor (Greater value, more narrow; smaller value, more wide)
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Quality", 1), "Peak Quality",
+                                                                juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f),
+                                                                1.f));
+    return paramLayout;
 }
 
 //==============================================================================
