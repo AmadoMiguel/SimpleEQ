@@ -102,6 +102,15 @@ void SimpleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     spec.sampleRate = sampleRate;
     lChain.prepare(spec);
     rChain.prepare(spec);
+    
+    ChainSettings settings = getChainSettings(valueTreeState);
+    // Initialize Peak Filter in the processing chain
+    auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
+                                                                              settings.peakFreq,
+                                                                              settings.peakQ,
+                                                                              juce::Decibels::decibelsToGain(settings.peakGainInDbs));
+    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
 }
 
 void SimpleEQAudioProcessor::releaseResources()
@@ -150,6 +159,15 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
+    
+    // Get values from ValueTreeState to feed each Filter Coefficients
+    ChainSettings settings = getChainSettings(valueTreeState);
+    auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
+                                                                              settings.peakFreq,
+                                                                              settings.peakQ,
+                                                                              juce::Decibels::decibelsToGain(settings.peakGainInDbs));
+    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
     // Wrap the buffer with audio samples in the AudioBlock, so that each of the
     // channels data is passed onto the processing chains
     juce::dsp::AudioBlock<float> block(buffer);
@@ -195,12 +213,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
     // Cut Bands: Controllable Freq/Slope
     // Skew factor of 1.0 (Linear change of the values)
     // Low Cut Filter -> 20Hz to 20kHz Freq Range. Default value of 20Hz
-    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("LowCut Freq", 1), "LowCut Freq",
-                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(LO_CUT_FREQ, 1), LO_CUT_FREQ,
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                 20.f));
     // Hi Cut Filter -> 20Hz to 20kHz Freq Range. Default value of 20kHz
-    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("HiCut Freq", 1), "HiCut Freq",
-                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(HI_CUT_FREQ, 1), HI_CUT_FREQ,
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                 20000.f));
     // Create Choice Object for both the Low and Hi Cut Filter Parameters.
     // Slope will have values which are factor of 12 (12 dBs/Oct, 24 dBs/Oct, etc.)
@@ -212,23 +230,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
         str += " dBs/Oct";
         stringArray.add(str);
     }
-    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID("LowCut Slope", 1), "LowCut Slope", stringArray, 0));
-    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID("HiCut Slope", 1), "HiCut Slope", stringArray, 0));
+    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID(LO_CUT_SLOPE, 1), LO_CUT_SLOPE, stringArray, 0));
+    paramLayout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID(HI_CUT_SLOPE, 1), HI_CUT_SLOPE, stringArray, 0));
     
     // Parametric Band: Controllable Freq, Gain, Quality
     // Peak Band -> 20Hz to 20kHz Freq Range. Default value of 20Hz
-    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Freq", 1), "Peak Freq",
-                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(PK_FREQ, 1), PK_FREQ,
+                                                                juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
                                                                 750.f));
     // Peak Band Gain
-    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Gain", 1), "Peak Gain",
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(PK_GAIN, 1), PK_GAIN,
                                                                 juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
                                                                 0.0f));
     // Peak Band Quality factor (Greater value, more narrow; smaller value, more wide)
-    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("Peak Quality", 1), "Peak Quality",
+    paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(PK_QUALITY, 1), PK_QUALITY,
                                                                 juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f),
                                                                 1.f));
     return paramLayout;
+}
+
+ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts) {
+    // Load parameter values from the Value Tree State
+    ChainSettings settings;
+    settings.loCutFreq = apvts.getRawParameterValue(LO_CUT_FREQ)->load();
+    settings.loCutSlope = apvts.getRawParameterValue(LO_CUT_SLOPE)->load();
+    settings.hiCutFreq = apvts.getRawParameterValue(HI_CUT_FREQ)->load();
+    settings.hiCutSlope = apvts.getRawParameterValue(HI_CUT_SLOPE)->load();
+    settings.peakFreq = apvts.getRawParameterValue(PK_FREQ)->load();
+    settings.peakGainInDbs = apvts.getRawParameterValue(PK_GAIN)->load();
+    settings.peakQ = apvts.getRawParameterValue(PK_QUALITY)->load();
+    return settings;
 }
 
 //==============================================================================

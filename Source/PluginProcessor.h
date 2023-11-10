@@ -10,6 +10,17 @@
 
 #include <JuceHeader.h>
 
+static const juce::String LO_CUT_FREQ = "LowCut Freq", LO_CUT_SLOPE = "LowCut Slope";
+static const juce::String HI_CUT_FREQ = "HiCut Freq", HI_CUT_SLOPE = "HiCut Slope";
+static const juce::String PK_FREQ = "Peak Freq", PK_GAIN = "Peak Gain", PK_QUALITY = "Peak Quality";
+// Data structure that wraps the param values used by the EQ processing chain
+struct ChainSettings {
+    float peakFreq{0}, peakGainInDbs{0}, peakQ{1.f};
+    float loCutFreq{0}, loCutSlope{0};
+    float hiCutFreq{0}, hiCutSlope{0};
+};
+ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
+
 //==============================================================================
 /**
 */
@@ -71,6 +82,12 @@ private:
     // This would represent the entire signal processing path (Low Cut, Peak, Hi Cut)
     using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
     MonoChain lChain, rChain;
+    // Used as a helper to idenfity each part of the Filter Processor Chain
+    enum ChainPositions {
+        LowCut,
+        Peak,
+        HighCut
+    };
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessor)
 };
