@@ -95,6 +95,13 @@ void SimpleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    // Initialize ProcessSpec object to be passed to the processing chain for each channel
+    juce::dsp::ProcessSpec spec;
+    spec.maximumBlockSize = samplesPerBlock;
+    spec.numChannels = 1;
+    spec.sampleRate = sampleRate;
+    lChain.prepare(spec);
+    rChain.prepare(spec);
 }
 
 void SimpleEQAudioProcessor::releaseResources()
@@ -143,19 +150,15 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
-
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
-
-        // ..do something to the data...
-    }
+    // Wrap the buffer with audio samples in the AudioBlock, so that each of the
+    // channels data is passed onto the processing chains
+    juce::dsp::AudioBlock<float> block(buffer);
+    auto lBlock = block.getSingleChannelBlock(0);
+    auto rBlock = block.getSingleChannelBlock(1);
+    juce::dsp::ProcessContextReplacing<float> lCtxt(lBlock);
+    juce::dsp::ProcessContextReplacing<float> rCtxt(rBlock);
+    lChain.process(lCtxt);
+    rChain.process(rCtxt);
 }
 
 //==============================================================================
@@ -166,9 +169,9 @@ bool SimpleEQAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* SimpleEQAudioProcessor::createEditor()
 {
-    return new SimpleEQAudioProcessorEditor (*this);
+//    return new SimpleEQAudioProcessorEditor (*this);
     // Can be used to build generic GUI with the declared Processor Parameters (if any)
-//    return new juce::GenericAudioProcessorEditor(*this);
+    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
