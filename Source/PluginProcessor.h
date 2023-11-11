@@ -14,12 +14,18 @@ static const juce::String LO_CUT_FREQ = "LowCut Freq", LO_CUT_SLOPE = "LowCut Sl
 static const juce::String HI_CUT_FREQ = "HiCut Freq", HI_CUT_SLOPE = "HiCut Slope";
 static const juce::String PK_FREQ = "Peak Freq", PK_GAIN = "Peak Gain", PK_QUALITY = "Peak Quality";
 // Data structure that wraps the param values used by the EQ processing chain
+enum Slope {
+    Slope_12,
+    Slope_24,
+    Slope_36,
+    Slope_48
+};
 struct ChainSettings {
     float peakFreq{0}, peakGainInDbs{0}, peakQ{1.f};
-    float loCutFreq{0}, loCutSlope{0};
-    float hiCutFreq{0}, hiCutSlope{0};
+    float loCutFreq{0}, hiCutFreq{0};
+    // Default value for Cut Filter Slopes -> 12 dB/Oct
+    Slope loCutSlope{Slope::Slope_12}, hiCutSlope{Slope::Slope_12};
 };
-ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
 
 //==============================================================================
 /**
@@ -88,6 +94,13 @@ private:
         Peak,
         HighCut
     };
+    ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
+    // Helper functions to avoid repeating code
+    void updatePeakFilter(const ChainSettings &chainSettings);
+    void updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain);
+    // Generic method with shared code across cut filters coefficients updates
+    template<typename ChainType, typename CoefficientsType>
+    void updateCutFilterCoefficients(ChainType &cutChain, const CoefficientsType &cutCoefficients, const Slope &slope);
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessor)
 };

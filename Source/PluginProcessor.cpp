@@ -104,13 +104,14 @@ void SimpleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     rChain.prepare(spec);
     
     ChainSettings settings = getChainSettings(valueTreeState);
+
     // Initialize Peak Filter in the processing chain
-    auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
-                                                                              settings.peakFreq,
-                                                                              settings.peakQ,
-                                                                              juce::Decibels::decibelsToGain(settings.peakGainInDbs));
-    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
-    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    updatePeakFilter(settings);
+    // Initialize Low and High Cut Filters for each processing chain
+    updateCutFilter(ChainPositions::LowCut, settings, lChain);
+    updateCutFilter(ChainPositions::LowCut, settings, rChain);
+    updateCutFilter(ChainPositions::HighCut, settings, lChain);
+    updateCutFilter(ChainPositions::HighCut, settings, rChain);
 }
 
 void SimpleEQAudioProcessor::releaseResources()
@@ -162,12 +163,11 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     
     // Get values from ValueTreeState to feed each Filter Coefficients
     ChainSettings settings = getChainSettings(valueTreeState);
-    auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
-                                                                              settings.peakFreq,
-                                                                              settings.peakQ,
-                                                                              juce::Decibels::decibelsToGain(settings.peakGainInDbs));
-    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
-    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    updatePeakFilter(settings);
+    updateCutFilter(ChainPositions::LowCut, settings, lChain);
+    updateCutFilter(ChainPositions::LowCut, settings, rChain);
+    updateCutFilter(ChainPositions::HighCut, settings, lChain);
+    updateCutFilter(ChainPositions::HighCut, settings, rChain);
     // Wrap the buffer with audio samples in the AudioBlock, so that each of the
     // channels data is passed onto the processing chains
     juce::dsp::AudioBlock<float> block(buffer);
@@ -249,17 +249,88 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQAudioProcessor::crea
     return paramLayout;
 }
 
-ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts) {
+ChainSettings SimpleEQAudioProcessor::getChainSettings(juce::AudioProcessorValueTreeState &apvts) {
     // Load parameter values from the Value Tree State
     ChainSettings settings;
     settings.loCutFreq = apvts.getRawParameterValue(LO_CUT_FREQ)->load();
-    settings.loCutSlope = apvts.getRawParameterValue(LO_CUT_SLOPE)->load();
+    settings.loCutSlope = static_cast<Slope>(apvts.getRawParameterValue(LO_CUT_SLOPE)->load());
     settings.hiCutFreq = apvts.getRawParameterValue(HI_CUT_FREQ)->load();
-    settings.hiCutSlope = apvts.getRawParameterValue(HI_CUT_SLOPE)->load();
+    settings.hiCutSlope = static_cast<Slope>(apvts.getRawParameterValue(HI_CUT_SLOPE)->load());
     settings.peakFreq = apvts.getRawParameterValue(PK_FREQ)->load();
     settings.peakGainInDbs = apvts.getRawParameterValue(PK_GAIN)->load();
     settings.peakQ = apvts.getRawParameterValue(PK_QUALITY)->load();
     return settings;
+}
+
+void SimpleEQAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings) {
+    // Setup IIR Peak Filter coefficients into the process chain for each channel
+    auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
+                                                                              chainSettings.peakFreq,
+                                                                              chainSettings.peakQ,
+                                                                              juce::Decibels::decibelsToGain(chainSettings.peakGainInDbs));
+    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+}
+
+// Common method to update either Low Cut/Hi Cut filter coefficients
+void SimpleEQAudioProcessor::updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain) {
+    if (filterPos == ChainPositions::LowCut) {
+        // Coefficients for Low Cut/Hi Pass filter. Order needs to be mutliple of 2 in order to have even dBs/Oct values
+        auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.loCutFreq,
+                                                                                                           getSampleRate(),
+                                                                                                           2 * (chainSettings.loCutSlope + 1));
+        // Initialize each slope Filter as by-passed
+        auto &lowCut = chain.get<ChainPositions::LowCut>();
+        updateCutFilterCoefficients(lowCut, cutCoefficients, chainSettings.loCutSlope);
+    } else { // HighCut
+        // Coefficients for Low Pass/Hi Cut filter. Order needs to be mutliple of 2 in order to have even dBs/Oct values
+        auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(chainSettings.hiCutFreq,
+                                                                                                          getSampleRate(),
+                                                                                                          2 * (chainSettings.hiCutSlope + 1));
+        auto &highCut = chain.get<ChainPositions::HighCut>();
+        updateCutFilterCoefficients(highCut, cutCoefficients, chainSettings.hiCutSlope);
+    }
+    
+}
+
+template<typename ChainType, typename CoefficientsType>
+void SimpleEQAudioProcessor::updateCutFilterCoefficients(ChainType &cutChain, const CoefficientsType &cutCoefficients, const Slope &slope) {
+    // All Cut Filter slopes disabled initially
+    cutChain.template setBypassed<0>(true);
+    cutChain.template setBypassed<1>(true);
+    cutChain.template setBypassed<2>(true);
+    cutChain.template setBypassed<3>(true);
+    // Depending on selected slope, assign coefficients and enable slopes until (and including) that slope Filter
+    switch (slope) {
+        case Slope_12:
+            *cutChain.template get<0>().coefficients = *cutCoefficients[0];
+            cutChain.template setBypassed<0>(false);
+            break;
+        case Slope_24:
+            *cutChain.template get<0>().coefficients = *cutCoefficients[0];
+            cutChain.template setBypassed<0>(false);
+            *cutChain.template get<1>().coefficients = *cutCoefficients[1];
+            cutChain.template setBypassed<1>(false);
+            break;
+        case Slope_36:
+            *cutChain.template get<0>().coefficients = *cutCoefficients[0];
+            cutChain.template setBypassed<0>(false);
+            *cutChain.template get<1>().coefficients = *cutCoefficients[1];
+            cutChain.template setBypassed<1>(false);
+            *cutChain.template get<2>().coefficients = *cutCoefficients[2];
+            cutChain.template setBypassed<2>(false);
+            break;
+        case Slope_48:
+            *cutChain.template get<0>().coefficients = *cutCoefficients[0];
+            cutChain.template setBypassed<0>(false);
+            *cutChain.template get<1>().coefficients = *cutCoefficients[1];
+            cutChain.template setBypassed<1>(false);
+            *cutChain.template get<2>().coefficients = *cutCoefficients[2];
+            cutChain.template setBypassed<2>(false);
+            *cutChain.template get<3>().coefficients = *cutCoefficients[3];
+            cutChain.template setBypassed<3>(false);
+            break;
+    }
 }
 
 //==============================================================================
