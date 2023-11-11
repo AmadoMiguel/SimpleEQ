@@ -9,23 +9,7 @@
 #pragma once
 
 #include <JuceHeader.h>
-
-static const juce::String LO_CUT_FREQ = "LowCut Freq", LO_CUT_SLOPE = "LowCut Slope";
-static const juce::String HI_CUT_FREQ = "HiCut Freq", HI_CUT_SLOPE = "HiCut Slope";
-static const juce::String PK_FREQ = "Peak Freq", PK_GAIN = "Peak Gain", PK_QUALITY = "Peak Quality";
-// Data structure that wraps the param values used by the EQ processing chain
-enum Slope {
-    Slope_12,
-    Slope_24,
-    Slope_36,
-    Slope_48
-};
-struct ChainSettings {
-    float peakFreq{0}, peakGainInDbs{0}, peakQ{1.f};
-    float loCutFreq{0}, hiCutFreq{0};
-    // Default value for Cut Filter Slopes -> 12 dB/Oct
-    Slope loCutSlope{Slope::Slope_12}, hiCutSlope{Slope::Slope_12};
-};
+#include "SimpleEQProcessor.h"
 
 //==============================================================================
 /**
@@ -75,32 +59,11 @@ public:
     
     // Declare AudioProcessorValueTreeState which holds the Plugin Parameters needed
     // for the project. ParameterLayout is set separately from a function
-    static juce::AudioProcessorValueTreeState::ParameterLayout createParamLayout();
-    juce::AudioProcessorValueTreeState valueTreeState {*this, nullptr, "Parameters", createParamLayout()};
+    juce::AudioProcessorValueTreeState valueTreeState {*this, nullptr, "Parameters", simpleEqProcessor.createParamLayout()};
 
 private:
-    // Create aliases for type name shorthand
-    // Filter has a response of 12 dB/Oct when configured as Lo-pass or Hi-pass Filter
-    using Filter = juce::dsp::IIR::Filter<float>;
-    // Processor Chain of 4 filters for the Cut Filters, since the idea is to have a chain of 4 filters,
-    // in order to have Chained Filters that conform a 48 Db/Oct Filter
-    using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
-    // This would represent the entire signal processing path (Low Cut, Peak, Hi Cut)
-    using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
-    MonoChain lChain, rChain;
-    // Used as a helper to idenfity each part of the Filter Processor Chain
-    enum ChainPositions {
-        LowCut,
-        Peak,
-        HighCut
-    };
-    ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
-    // Helper functions to avoid repeating code
-    void updatePeakFilter(const ChainSettings &chainSettings);
-    void updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain);
-    // Generic method with shared code across cut filters coefficients updates
-    template<typename ChainType, typename CoefficientsType>
-    void updateCutFilterCoefficients(ChainType &cutChain, const CoefficientsType &cutCoefficients, const Slope &slope);
+    // Object that contains DSP logic
+    SimpleEQProcessor simpleEqProcessor;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessor)
 };

@@ -4,6 +4,10 @@
               addUsingNamespaceToJuceHeader="0" displaySplashScreen="1" jucerFormatVersion="1">
   <MAINGROUP id="lChJsQ" name="SimpleEQ">
     <GROUP id="{53D221F8-1F6B-58A8-1EF4-DB991963F3C3}" name="Source">
+      <FILE id="YL5Qdc" name="SimpleEQProcessor.cpp" compile="1" resource="0"
+            file="Source/SimpleEQProcessor.cpp"/>
+      <FILE id="loNzOe" name="SimpleEQProcessor.h" compile="0" resource="0"
+            file="Source/SimpleEQProcessor.h"/>
       <FILE id="FwQjAx" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="OAd5RT" name="PluginProcessor.h" compile="0" resource="0"
