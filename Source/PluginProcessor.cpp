@@ -93,6 +93,8 @@ void SimpleEQAudioProcessor::changeProgramName (int index, const juce::String& n
 //==============================================================================
 void SimpleEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    // Use this method as the place to do any pre-playback
+    // initialisation that you need..
     simpleEqProcessor.prepareToPlay(sampleRate, samplesPerBlock, valueTreeState);
 }
 

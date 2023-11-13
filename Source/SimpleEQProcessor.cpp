@@ -44,8 +44,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQProcessor::createPar
 
 void SimpleEQProcessor::prepareToPlay(double sampleRate, int samplesPerBlock, juce::AudioProcessorValueTreeState &apvts) {
     this->sampleRate = sampleRate;
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
     // Initialize ProcessSpec object to be passed to the processing chain for each channel
     juce::dsp::ProcessSpec spec;
     spec.maximumBlockSize = samplesPerBlock;
@@ -53,25 +51,13 @@ void SimpleEQProcessor::prepareToPlay(double sampleRate, int samplesPerBlock, ju
     spec.sampleRate = sampleRate;
     lChain.prepare(spec);
     rChain.prepare(spec);
-    
-    ChainSettings settings = getChainSettings(apvts);
-    // Initialize Peak Filter in the processing chain
-    updatePeakFilter(settings);
-    updateCutFilter(ChainPositions::LowCut, settings, lChain);
-    updateCutFilter(ChainPositions::LowCut, settings, rChain);
-    updateCutFilter(ChainPositions::HighCut, settings, lChain);
-    updateCutFilter(ChainPositions::HighCut, settings, rChain);
+    // Initialize EQ Filters configuration
+    updateFilters(apvts);
     
 }
 
 void SimpleEQProcessor::process(juce::AudioBuffer<float> &buffer, juce::AudioProcessorValueTreeState &apvts) {
-    // Get values from ValueTreeState to feed each Filter Coefficients
-    ChainSettings settings = getChainSettings(apvts);
-    updatePeakFilter(settings);
-    updateCutFilter(ChainPositions::LowCut, settings, lChain);
-    updateCutFilter(ChainPositions::LowCut, settings, rChain);
-    updateCutFilter(ChainPositions::HighCut, settings, lChain);
-    updateCutFilter(ChainPositions::HighCut, settings, rChain);
+    updateFilters(apvts);
     // Wrap the buffer with audio samples in the AudioBlock, so that each of the
     // channels data is passed onto the processing chains
     juce::dsp::AudioBlock<float> block(buffer);
@@ -83,8 +69,8 @@ void SimpleEQProcessor::process(juce::AudioBuffer<float> &buffer, juce::AudioPro
     rChain.process(rCtxt);
 }
 
-ChainSettings SimpleEQProcessor::getChainSettings(juce::AudioProcessorValueTreeState &apvts) {
-    // Load parameter values from the Value Tree State
+void SimpleEQProcessor::updateFilters(juce::AudioProcessorValueTreeState &apvts) {
+    // Get Parameters values from ValueTreeState to feed each Filter Coefficients
     ChainSettings settings;
     settings.loCutFreq = apvts.getRawParameterValue(LO_CUT_FREQ)->load();
     settings.loCutSlope = static_cast<Slope>(apvts.getRawParameterValue(LO_CUT_SLOPE)->load());
@@ -93,7 +79,11 @@ ChainSettings SimpleEQProcessor::getChainSettings(juce::AudioProcessorValueTreeS
     settings.peakFreq = apvts.getRawParameterValue(PK_FREQ)->load();
     settings.peakGainInDbs = apvts.getRawParameterValue(PK_GAIN)->load();
     settings.peakQ = apvts.getRawParameterValue(PK_QUALITY)->load();
-    return settings;
+    updatePeakFilter(settings);
+    updateCutFilter(ChainPositions::LowCut, settings, lChain);
+    updateCutFilter(ChainPositions::LowCut, settings, rChain);
+    updateCutFilter(ChainPositions::HighCut, settings, lChain);
+    updateCutFilter(ChainPositions::HighCut, settings, rChain);
 }
 
 void SimpleEQProcessor::updatePeakFilter(const ChainSettings &chainSettings) {

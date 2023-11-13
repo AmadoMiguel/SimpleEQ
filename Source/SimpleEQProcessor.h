@@ -43,8 +43,8 @@ private:
         Peak,
         HighCut
     };
-    ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
     // Helper functions to avoid repeating code
+    void updateFilters(juce::AudioProcessorValueTreeState &apvts);
     void updatePeakFilter(const ChainSettings &chainSettings);
     void updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain);
     // Generic method with shared code across cut filters coefficients updates
