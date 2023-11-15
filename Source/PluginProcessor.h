@@ -59,7 +59,7 @@ public:
     
     // Declare AudioProcessorValueTreeState which holds the Plugin Parameters needed
     // for the project. ParameterLayout is set separately from a function
-    juce::AudioProcessorValueTreeState valueTreeState {*this, nullptr, "Parameters", simpleEqProcessor.createParamLayout()};
+    juce::AudioProcessorValueTreeState valueTreeState {*this, nullptr, "Parameters", SimpleEQProcessor::createParamLayout()};
 
 private:
     // Object that contains DSP logic

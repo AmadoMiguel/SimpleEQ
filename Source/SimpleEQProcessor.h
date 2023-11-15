@@ -28,6 +28,12 @@ public:
     void process(juce::AudioBuffer<float> &buffer, juce::AudioProcessorValueTreeState &apvts);
 private:
     double sampleRate;
+    // Used as a helper to idenfity each part of the Filter Processor Chain
+    enum ChainPositions {
+        LowCut,
+        Peak,
+        HighCut
+    };
     // Create aliases for type name shorthand
     // Filter has a response of 12 dB/Oct when configured as Lo-pass or Hi-pass Filter
     using Filter = juce::dsp::IIR::Filter<float>;
@@ -37,12 +43,7 @@ private:
     // This would represent the entire signal processing path (Low Cut, Peak, Hi Cut)
     using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
     MonoChain lChain, rChain;
-    // Used as a helper to idenfity each part of the Filter Processor Chain
-    enum ChainPositions {
-        LowCut,
-        Peak,
-        HighCut
-    };
+    
     // Helper functions to avoid repeating code
     void updateFilters(juce::AudioProcessorValueTreeState &apvts);
     void updatePeakFilter(const ChainSettings &chainSettings);
