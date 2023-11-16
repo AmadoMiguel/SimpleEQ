@@ -60,7 +60,7 @@ public:
     // Declare AudioProcessorValueTreeState which holds the Plugin Parameters needed
     // for the project. ParameterLayout is set separately from a function
     juce::AudioProcessorValueTreeState valueTreeState {*this, nullptr, "Parameters", SimpleEQProcessor::createParamLayout()};
-
+    void calculateFrequencyResponseMagnitude(std::vector<double> &mags);
 private:
     // Object that contains DSP logic
     SimpleEQProcessor simpleEqProcessor;

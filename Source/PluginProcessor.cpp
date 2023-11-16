@@ -148,6 +148,9 @@ void SimpleEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     simpleEqProcessor.process(buffer, valueTreeState);
 }
 
+void SimpleEQAudioProcessor::calculateFrequencyResponseMagnitude(std::vector<double> &mags) {
+    simpleEqProcessor.calculateFrequencyResponseMagnitude(mags, valueTreeState);
+}
 //==============================================================================
 bool SimpleEQAudioProcessor::hasEditor() const
 {

@@ -33,7 +33,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SimpleEQProcessor::createPar
                                                                 750.f));
     // Peak Band Gain
     paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(PK_GAIN, 1), PK_GAIN,
-                                                                juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+                                                                juce::NormalisableRange<float>(PEAK_GAIN_MIN, PEAK_GAIN_MAX, 0.5f, 1.f),
                                                                 0.0f));
     // Peak Band Quality factor (Greater value, more narrow; smaller value, more wide)
     paramLayout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(PK_QUALITY, 1), PK_QUALITY,
@@ -71,6 +71,16 @@ void SimpleEQProcessor::process(juce::AudioBuffer<float> &buffer, juce::AudioPro
 
 void SimpleEQProcessor::updateFilters(juce::AudioProcessorValueTreeState &apvts) {
     // Get Parameters values from ValueTreeState to feed each Filter Coefficients
+    ChainSettings settings = getChainSettings(apvts);
+    updateCutFilter(ChainPositions::LowCut, settings, lChain);
+    updateCutFilter(ChainPositions::LowCut, settings, rChain);
+    updatePeakFilter(settings, lChain);
+    updatePeakFilter(settings, rChain);
+    updateCutFilter(ChainPositions::HighCut, settings, lChain);
+    updateCutFilter(ChainPositions::HighCut, settings, rChain);
+}
+
+ChainSettings SimpleEQProcessor::getChainSettings(juce::AudioProcessorValueTreeState &apvts) {
     ChainSettings settings;
     settings.loCutFreq = apvts.getRawParameterValue(LO_CUT_FREQ)->load();
     settings.loCutSlope = static_cast<Slope>(apvts.getRawParameterValue(LO_CUT_SLOPE)->load());
@@ -79,21 +89,16 @@ void SimpleEQProcessor::updateFilters(juce::AudioProcessorValueTreeState &apvts)
     settings.peakFreq = apvts.getRawParameterValue(PK_FREQ)->load();
     settings.peakGainInDbs = apvts.getRawParameterValue(PK_GAIN)->load();
     settings.peakQ = apvts.getRawParameterValue(PK_QUALITY)->load();
-    updatePeakFilter(settings);
-    updateCutFilter(ChainPositions::LowCut, settings, lChain);
-    updateCutFilter(ChainPositions::LowCut, settings, rChain);
-    updateCutFilter(ChainPositions::HighCut, settings, lChain);
-    updateCutFilter(ChainPositions::HighCut, settings, rChain);
+    return settings;
 }
 
-void SimpleEQProcessor::updatePeakFilter(const ChainSettings &chainSettings) {
+void SimpleEQProcessor::updatePeakFilter(const ChainSettings &chainSettings, MonoChain &chain) {
     // Setup IIR Peak Filter coefficients into the process chain for each channel
     auto pkCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
                                                                               chainSettings.peakFreq,
                                                                               chainSettings.peakQ,
                                                                               juce::Decibels::decibelsToGain(chainSettings.peakGainInDbs));
-    *lChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
-    *rChain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
+    *chain.get<ChainPositions::Peak>().coefficients = *pkCoefficients;
 }
 
 void SimpleEQProcessor::updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain) {
@@ -140,4 +145,41 @@ template<int Index, typename ChainType, typename CoefficientsType>
 void SimpleEQProcessor::enableCutSlopeFilter(ChainType &cutChain, const CoefficientsType &cutCoefficients) {
     *cutChain.template get<Index>().coefficients = *cutCoefficients[Index];
     cutChain.template setBypassed<Index>(false);
+}
+
+void SimpleEQProcessor::calculateFrequencyResponseMagnitude(std::vector<double> &mags, juce::AudioProcessorValueTreeState &apvts) {
+    // Set Magnitude values for the Frequency Response Curve, based on the Mono Chain Filters
+    ChainSettings settings = getChainSettings(apvts);
+    updateCutFilter(ChainPositions::LowCut, settings, cChain);
+    updatePeakFilter(settings, cChain);
+    updateCutFilter(ChainPositions::HighCut, settings, cChain);
+    auto &lowCut = cChain.get<ChainPositions::LowCut>();
+    auto &peak = cChain.get<ChainPositions::Peak>();
+    auto &hiCut = cChain.get<ChainPositions::HighCut>();
+    for (size_t i = 0; i < mags.size(); i++) {
+        // Magnitude is multiplicative instead of additive
+        double mag = 1.f;
+        // Representation of frequency value on pixel space; conversion is needed
+        auto freq = juce::mapToLog10(double(i)/double(mags.size()), 20.0, 20000.0);
+        // If each band is not bypassed, do the magnitude calculation
+        if (!lowCut.isBypassed<0>())
+            mag *= lowCut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!lowCut.isBypassed<1>())
+            mag *= lowCut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!lowCut.isBypassed<2>())
+            mag *= lowCut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!lowCut.isBypassed<3>())
+            mag *= lowCut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!cChain.isBypassed<ChainPositions::Peak>())
+            mag *= peak.coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!hiCut.isBypassed<0>())
+            mag *= hiCut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!hiCut.isBypassed<1>())
+            mag *= hiCut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!hiCut.isBypassed<2>())
+            mag *= hiCut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        if (!hiCut.isBypassed<3>())
+            mag *= hiCut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        mags[i] = juce::Decibels::gainToDecibels(mag);
+    }
 }

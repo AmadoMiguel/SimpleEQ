@@ -7,7 +7,9 @@
 static const juce::String LO_CUT_FREQ = "LowCut Freq", LO_CUT_SLOPE = "LowCut Slope";
 static const juce::String HI_CUT_FREQ = "HiCut Freq", HI_CUT_SLOPE = "HiCut Slope";
 static const juce::String PK_FREQ = "Peak Freq", PK_GAIN = "Peak Gain", PK_QUALITY = "Peak Quality";
-// Data structure that wraps the param values used by the EQ processing chain
+static const float PEAK_GAIN_MIN = -24.f, PEAK_GAIN_MAX = 24.f;
+
+// Wraps the param values used by the EQ processing chain
 enum Slope {
     Slope_12,
     Slope_24,
@@ -26,6 +28,7 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParamLayout();
     void prepareToPlay(double sampleRate, int samplesPerBlock, juce::AudioProcessorValueTreeState &apvts);
     void process(juce::AudioBuffer<float> &buffer, juce::AudioProcessorValueTreeState &apvts);
+    void calculateFrequencyResponseMagnitude(std::vector<double> &mags, juce::AudioProcessorValueTreeState &apvts);
 private:
     double sampleRate;
     // Used as a helper to idenfity each part of the Filter Processor Chain
@@ -42,11 +45,12 @@ private:
     using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
     // This would represent the entire signal processing path (Low Cut, Peak, Hi Cut)
     using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
-    MonoChain lChain, rChain;
+    MonoChain cChain, lChain, rChain;
     
     // Helper functions to avoid repeating code
+    ChainSettings getChainSettings(juce::AudioProcessorValueTreeState &apvts);
     void updateFilters(juce::AudioProcessorValueTreeState &apvts);
-    void updatePeakFilter(const ChainSettings &chainSettings);
+    void updatePeakFilter(const ChainSettings &chainSettings, MonoChain &chain);
     void updateCutFilter(ChainPositions filterPos, const ChainSettings &chainSettings, MonoChain &chain);
     // Generic method with shared code across cut filters coefficients updates
     template<typename ChainType, typename CoefficientsType>

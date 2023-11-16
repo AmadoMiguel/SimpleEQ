@@ -25,23 +25,57 @@ hiCutSlopeSliderAt(p.valueTreeState, HI_CUT_SLOPE, hiCutSlopeSlider)
     for (auto* comp: getComponents()) {
         addAndMakeVisible(comp);
     }
-    
+    // Register the editor as a listener to the parameters
+    const auto& params = audioProcessor.getParameters();
+    for (auto param: params) {
+        param->addListener(this);
+    }
+    startTimer(60);// 60 Hz
     setSize (600, 400);
 }
 
 SimpleEQAudioProcessorEditor::~SimpleEQAudioProcessorEditor()
 {
+    // De-register as parameters listener
+    const auto& params = audioProcessor.getParameters();
+    for (auto param:params) {
+        param->removeListener(this);
+    }
+//    stopTimer();
 }
 
 //==============================================================================
 void SimpleEQAudioProcessorEditor::paint (juce::Graphics& g)
 {
     // (Our component is opaque, so we must completely fill the background with a solid colour)
-    g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
-
-//    g.setColour (juce::Colours::white);
-//    g.setFont (15.0f);
-//    g.drawFittedText ("Hello World!", getLocalBounds(), juce::Justification::centred, 1);
+    g.fillAll (juce::Colours::black);
+    
+    auto bounds = getLocalBounds();
+    auto responseArea = bounds.removeFromTop(bounds.getHeight()*0.33);
+    auto w = responseArea.getWidth();
+    // Draw borders for the response curve area
+    g.setColour(juce::Colours::lightyellow);
+    g.drawRoundedRectangle(responseArea.toFloat(), 4.f, 1.f);
+    
+    // Calculate magnitudes to be displayed in the frequency response curve
+    std::vector<double> mags;
+    mags.resize(w);
+    audioProcessor.calculateFrequencyResponseMagnitude(mags);
+    const double outMin = responseArea.getBottom();
+    const double outMax = responseArea.getY();
+    // Used to map values in dB to screen coordinates
+    auto map = [outMin, outMax] (double input) {
+        // min anx max values based on the peak gain parameter bounds
+        return juce::jmap(input, (double)PEAK_GAIN_MIN, (double)PEAK_GAIN_MAX, outMin, outMax);
+    };
+    // Draw response curve
+    juce::Path responseCurve;
+    responseCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
+    for (size_t i = 1; i < mags.size(); i++) {
+        responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
+    }
+    g.setColour(juce::Colours::white);
+    g.strokePath(responseCurve, juce::PathStrokeType(2.f));
 }
 
 void SimpleEQAudioProcessorEditor::resized()
@@ -54,7 +88,7 @@ void SimpleEQAudioProcessorEditor::resized()
     // Frequency Response area on the top 3rd part of the window.
     // Filters will be distributed below it; each section occupies the 3rd part
     // from left to right
-    auto responseArea = bounds.removeFromTop(bounds.getHeight()*0.33);
+    bounds.removeFromTop(bounds.getHeight()*0.33);
     auto lowCutArea = bounds.removeFromLeft(bounds.getWidth()*0.33);
     auto hiCutArea = bounds.removeFromRight(bounds.getWidth()*0.5);
     lowCutFreqSlider.setBounds(lowCutArea.removeFromTop(lowCutArea.getHeight()*0.5));
@@ -72,4 +106,14 @@ std::vector<juce::Component*> SimpleEQAudioProcessorEditor::getComponents() {
         &lowCutFreqSlider, &hiCutFreqSlider, &lowCutSlopeSlider,
         &hiCutSlopeSlider
     };
+}
+
+void SimpleEQAudioProcessorEditor::parameterValueChanged(int parameterIndex, float newValue) {
+    parametersChanged.set(true);
+}
+
+void SimpleEQAudioProcessorEditor::timerCallback() {
+    // Re-draw Frequency Response curve if any processor parameter has changed
+    if (parametersChanged.compareAndSetBool(false, true))
+        repaint();
 }
